@@ -110,6 +110,12 @@ public class CoreTestHelper {
   /** Resolve remaining error mode. Deactivated by default. */
   private Config.ResolveRemainingErrorMode resolveRemainingErrorsMode;
 
+  /**
+   * JSpecify mode activation. Deactivated by default. If activated, the test will enable {<a
+   * href="https://jspecify.dev">JSpecify</a>} mode on NullAway.
+   */
+  private boolean jSpecifyModeEnabled;
+
   public CoreTestHelper(Path projectPath, Path outDirPath) {
     this.projectPath = projectPath;
     this.outDirPath = outDirPath;
@@ -117,6 +123,7 @@ public class CoreTestHelper {
     this.projectBuilder = new ProjectBuilder(this, projectPath);
     this.languageLevel = ParserConfiguration.LanguageLevel.JAVA_17;
     this.resolveRemainingErrorsMode = Config.ResolveRemainingErrorMode.DISABLED;
+    this.jSpecifyModeEnabled = false;
   }
 
   public Module onTarget() {
@@ -251,6 +258,16 @@ public class CoreTestHelper {
     return this;
   }
 
+  /**
+   * Enables JSpecify mode.
+   *
+   * @return This instance of {@link CoreTestHelper}.
+   */
+  public CoreTestHelper enableJSpecifyMode() {
+    this.jSpecifyModeEnabled = true;
+    return this;
+  }
+
   /** Starts the test process. */
   public void start() {
     System.setProperty("ANNOTATOR_TEST_MODE", "active");
@@ -287,15 +304,15 @@ public class CoreTestHelper {
       Utility.executeCommand(config.downstreamDependenciesBuildCommand);
       // Verify no error is reported in downstream dependencies.
       for (int i = 1; i < modules.size(); i++) {
-        Path path = outDirPath.resolve(i + "").resolve("errors.tsv");
+        Path path = outDirPath.resolve(i + "").resolve("errors.xml");
         try {
-          List<String> lines = Files.readAllLines(path);
-          if (lines.size() != 1) {
+          String content = Files.readString(path);
+          if (content.contains("<error")) {
             fail(
                 "Strict mode introduced errors in downstream dependency module: "
                     + modules.get(i)
                     + ", errors:\n"
-                    + lines);
+                    + content);
           }
         } catch (IOException e) {
           throw new RuntimeException("Exception happened while reading file at: " + path);
@@ -305,11 +322,11 @@ public class CoreTestHelper {
     if (!resolveRemainingErrorsMode.isDisabled()) {
       // Check no error will be reported in Target module
       Utility.executeCommand(config.buildCommand);
-      Path path = outDirPath.resolve("0").resolve("errors.tsv");
+      Path path = outDirPath.resolve("0").resolve("errors.xml");
       try {
-        List<String> lines = Files.readAllLines(path);
-        if (lines.size() != 1) {
-          fail(resolveRemainingErrorsMode.name() + " Mode did not resolve all errors:\n" + lines);
+        String content = Files.readString(path);
+        if (content.contains("<error")) {
+          fail(resolveRemainingErrorsMode.name() + " Mode did not resolve all errors:\n" + content);
         }
       } catch (IOException e) {
         throw new RuntimeException("Exception happened while reading file at: " + path);
@@ -451,7 +468,9 @@ public class CoreTestHelper {
                         outDirPath.resolve(name + "-scanner.xml")))
             .collect(Collectors.toList());
     builder.checker = NullAway.NAME;
-    builder.nullableAnnotation = "javax.annotation.Nullable";
+    // Set annotation name based on JSpecify mode activation.
+    builder.nullableAnnotation =
+        jSpecifyModeEnabled ? "org.jspecify.annotations.Nullable" : "javax.annotation.Nullable";
     // In tests, we use NullAway @Initializer annotation.
     builder.initializerAnnotation = "com.uber.nullaway.annotations.Initializer";
     builder.outputDir = outDirPath.toString();
@@ -475,17 +494,19 @@ public class CoreTestHelper {
         !getEnvironmentVariable("ANNOTATOR_TEST_DISABLE_PARALLEL_PROCESSING");
     if (downstreamDependencyAnalysisActivated) {
       builder.buildCommand =
-          projectBuilder.computeTargetBuildCommandWithLibraryModelLoaderDependency(this.outDirPath);
+          projectBuilder.computeTargetBuildCommandWithLibraryModelLoaderDependency(
+              this.outDirPath, jSpecifyModeEnabled);
       builder.downstreamBuildCommand =
           projectBuilder.computeDownstreamDependencyBuildCommandWithLibraryModelLoaderDependency(
-              this.outDirPath);
+              this.outDirPath, jSpecifyModeEnabled);
       builder.nullawayLibraryModelLoaderPath =
           Utility.getPathToLibraryModel(outDirPath)
               .resolve(
                   Paths.get(
                       "src", "main", "resources", "edu", "ucr", "cs", "riple", "librarymodel"));
     } else {
-      builder.buildCommand = projectBuilder.computeTargetBuildCommand(this.outDirPath);
+      builder.buildCommand =
+          projectBuilder.computeTargetBuildCommand(this.outDirPath, jSpecifyModeEnabled);
     }
     builder.write(configPath);
   }

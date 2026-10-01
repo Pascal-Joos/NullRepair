@@ -96,14 +96,26 @@ public class NullAwayError extends Error implements Comparable<NullAwayError> {
     public final String symbol;
 
     public NullableExpressionInfo(JsonObject obj) {
-      this.expression = obj.get("expression").getAsString();
-      this.isAnnotated = obj.get("isAnnotated").getAsBoolean();
-      this.kind = obj.get("kind").getAsString();
-      this.clazz = obj.get("class").getAsString();
-      this.position = obj.get("position").getAsInt();
-      this.symbol = obj.get("symbol").getAsString();
+      // NullAway's v4 errors.xml does not carry this custom metadata (only the former JSON format
+      // did), so every field tolerates an absent key and degrades to a neutral default.
+      this.expression = stringOrDefault(obj, "expression", "");
+      this.isAnnotated = obj.has("isAnnotated") && obj.get("isAnnotated").getAsBoolean();
+      this.kind = stringOrDefault(obj, "kind", "");
+      this.clazz = stringOrDefault(obj, "class", "");
+      this.position = obj.has("position") ? obj.get("position").getAsInt() : -1;
+      this.symbol = stringOrDefault(obj, "symbol", "");
+    }
+
+    private static String stringOrDefault(JsonObject obj, String key, String defaultValue) {
+      return obj.has(key) && !obj.get(key).isJsonNull() ? obj.get(key).getAsString() : defaultValue;
     }
   }
+
+  /**
+   * Error type for assigning nullable values to non-nullable arrays from NullAway in {@code
+   * String}.
+   */
+  public static final String ASSIGN_NULLABLE_TO_NONNULL_ARRAY = "ASSIGN_NULLABLE_TO_NONNULL_ARRAY";
 
   public NullAwayError(
       String messageType,
@@ -190,7 +202,21 @@ public class NullAwayError extends Error implements Comparable<NullAwayError> {
   public String getNullableExpression() {
     switch (messageType) {
       case "DEREFERENCE_NULLABLE":
-        return getNullableExpressionInfo().expression;
+        {
+          // Prefer the custom infos metadata when present (former JSON format); otherwise fall
+          // back to parsing NullAway's message, since v4 errors.xml does not carry infos.
+          String fromInfo = getNullableExpressionInfo().expression;
+          if (!fromInfo.isEmpty()) {
+            return fromInfo;
+          }
+          Pattern derefPattern = Pattern.compile("dereferenced expression (.+) is @Nullable");
+          Matcher derefMatcher = derefPattern.matcher(message);
+          if (!derefMatcher.find()) {
+            throw new IllegalStateException(
+                "Could not extract nullable expression from message: " + message);
+          }
+          return derefMatcher.group(1);
+        }
       case "PASS_NULLABLE":
         Pattern pattern =
             Pattern.compile("passing @Nullable parameter '([^']+)' where @NonNull is required");

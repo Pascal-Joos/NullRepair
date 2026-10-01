@@ -1,7 +1,7 @@
 /*
  * MIT License
  *
- * Copyright (c) 2022 Nima Karimipour
+ * Copyright (c) 2024 Nima Karimipour
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -22,26 +22,4 @@
  * THE SOFTWARE.
  */
 
-plugins {
-    id "net.ltgt.errorprone" version "5.1.0" apply false
-}
-
-dependencies {
-    compileOnly deps.apt.autoServiceAnnot
-    annotationProcessor deps.apt.autoService
-    compileOnly deps.build.errorProneCheckApi
-
-    testImplementation deps.test.errorProneTestHelpers
-}
-
-test {
-    jvmArgs(
-        "--add-opens=jdk.compiler/com.sun.tools.javac.file=ALL-UNNAMED",
-        "--add-opens=jdk.compiler/com.sun.tools.javac.api=ALL-UNNAMED",
-        "--add-opens=jdk.compiler/com.sun.tools.javac.main=ALL-UNNAMED",
-        "--add-opens=jdk.compiler/com.sun.tools.javac.tree=ALL-UNNAMED",
-        "--add-opens=jdk.compiler/com.sun.tools.javac.code=ALL-UNNAMED",
-        "--add-opens=jdk.compiler/com.sun.tools.javac.comp=ALL-UNNAMED",
-        "--add-opens=jdk.compiler/com.sun.tools.javac.util=ALL-UNNAMED"
-    )
-}
+rootProject.name = 'java-21'

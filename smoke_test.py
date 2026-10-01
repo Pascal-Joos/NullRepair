@@ -9,13 +9,27 @@ Run from the repository root (virtual environment must be active):
     python3 smoke_test.py
 """
 
+import glob
 import os
 import subprocess
 import sys
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
-JAR = os.path.join(ROOT, "annotator-core", "build", "libs",
-                   "annotator-core-1.3.16-SNAPSHOT.jar")
+
+
+def _find_annotator_jar():
+    # The shadow (fat) jar has no classifier; the plain jar is "-nonshadow". Match the version
+    # from gradle.properties without hardcoding it so version bumps don't break this script.
+    candidates = [
+        j for j in glob.glob(os.path.join(
+            ROOT, "annotator-core", "build", "libs", "annotator-core-*.jar"))
+        if not any(c in j for c in ("nonshadow", "sources", "javadoc"))
+    ]
+    return candidates[0] if candidates else os.path.join(
+        ROOT, "annotator-core", "build", "libs", "annotator-core-1.3.20-SNAPSHOT.jar")
+
+
+JAR = _find_annotator_jar()
 EUREKA = os.path.join(ROOT, "benchmarks", "eureka")
 
 

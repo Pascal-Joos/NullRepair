@@ -13,9 +13,9 @@ ENV ANDROID_HOME=/usr/lib/android-sdk
 USER vscode
 WORKDIR /home/vscode
 
-# Install and build NullAway dependency
-RUN git clone https://github.com/Pascal-Joos/NullAway.git /home/vscode/NullAway && cd /home/vscode/NullAway && git checkout d0c7d8390964ee5dc95d6bf93ae76b85913b2342 \
-    && echo 'sdk.dir=/usr/lib/android-sdk' >local.properties && ./gradlew build -x test && ./gradlew publishToMavenLocal
-    
+# NullAway is consumed as a released dependency (com.uber.nullaway:nullaway, see
+# gradle/dependencies.gradle). Since NullAway 0.14.0 it serializes errors as errors.xml
+# (serialization version 4, uber/NullAway#1322), which the annotator consumes directly, so no
+# custom NullAway fork needs to be built here anymore.
 
 CMD ["bash"]

@@ -1,3 +1,4 @@
+import glob
 import subprocess
 
 
@@ -15,7 +16,20 @@ BENCHMARKS = [
               "wala-util", 
               "zuul"
               ]
-ANNOTATOR_JAR = "./annotator-core/build/libs/annotator-core-1.3.16-SNAPSHOT.jar"
+def _find_annotator_jar():
+    # The shadow (fat) jar has no classifier; the plain jar is "-nonshadow". Match the version
+    # from gradle.properties without hardcoding it so version bumps don't break this script.
+    candidates = [
+        j for j in glob.glob("./annotator-core/build/libs/annotator-core-*.jar")
+        if not any(c in j for c in ("nonshadow", "sources", "javadoc"))
+    ]
+    if not candidates:
+        raise FileNotFoundError(
+            "annotator-core jar not found — run: ./gradlew build -x test")
+    return candidates[0]
+
+
+ANNOTATOR_JAR = _find_annotator_jar()
 
 def prepare(benchmark):
     return

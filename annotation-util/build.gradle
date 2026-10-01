@@ -23,17 +23,10 @@
  */
 
 plugins {
-    id 'java'
-    id 'com.github.johnrengelman.shadow' version '7.1.2'
     id 'maven-publish'
-    id 'application'
     id "com.vanniktech.maven.publish"
 }
 
 dependencies {
     implementation "org.jspecify:jspecify:0.3.0"
-}
-
-application {
-    mainClass = 'edu.ucr.cs.riple.annotator.util.Nullability'
 }

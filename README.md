@@ -81,7 +81,7 @@ Expected output:
   Exercises: NullAway static analysis, build, annotation injection,
   and git integration — no API call is made.
 
-  $ java -jar annotator-core/build/libs/annotator-core-1.3.16-SNAPSHOT.jar eureka --mode disabled --selectedErrorIds 2 --depth 1
+  $ java -jar annotator-core/build/libs/annotator-core-1.3.20-SNAPSHOT.jar eureka --mode disabled --selectedErrorIds 2 --depth 1
 
 ANNOTATOR VERSION: 3, BUILD: 6
 Received arguments: eureka, --mode, disabled, --selectedErrorIds, 2, --depth, 1
@@ -117,7 +117,7 @@ Commiting changes to branch joos/disabled-3...
 **This requires an OpenAI API key** to be set up as described in 1.3., as NullRepair queries the OpenAI API to generate fixes.
 
 A small example run where NullRepair is run on three nullability errors of project eureka can be executed with the following command:  
-```java -jar annotator-core/build/libs/annotator-core-1.3.16-SNAPSHOT.jar eureka --mode advanced --selectedErrorIds 2,4,5```
+```java -jar annotator-core/build/libs/annotator-core-1.3.20-SNAPSHOT.jar eureka --mode advanced --selectedErrorIds 2,4,5```
 
 Expected output (truncated):  
 
@@ -319,13 +319,13 @@ Per default the project is reset for each error (patch-level analysis). Set `--c
 The following commands run the experiment on project eureka.  
 
 Run NullRepair on project eureka:  
-```java -jar annotator-core/build/libs/annotator-core-1.3.16-SNAPSHOT.jar eureka --mode advanced```
+```java -jar annotator-core/build/libs/annotator-core-1.3.20-SNAPSHOT.jar eureka --mode advanced```
 
 Run SinglePrompt baseline on project eureka:  
-```java -jar annotator-core/build/libs/annotator-core-1.3.16-SNAPSHOT.jar eureka --mode basic```
+```java -jar annotator-core/build/libs/annotator-core-1.3.20-SNAPSHOT.jar eureka --mode basic```
 
 Run mini-SWE-agent baseline on project eureka:  
-```java -jar annotator-core/build/libs/annotator-core-1.3.16-SNAPSHOT.jar eureka --mode agent_baseline```
+```java -jar annotator-core/build/libs/annotator-core-1.3.20-SNAPSHOT.jar eureka --mode agent_baseline```
 
 List of all projects: `conductor`, `eureka`, `glide`, `gson`, `jadx`, `libgdx`, `litiengine`, `mockito`, `retrofit`, `spring-boot`, `wala-util`, `zuul`
 
@@ -396,13 +396,13 @@ For our example, after line 139 add the following:
 9. First run NullAwayAnnotator on the project to add nullability annotations to the code, without running NullRepair. Then, commit these changes to the `nimak/auto-code-fix` branch. This way, the changes made by NullRepair are more clear and the project is in a clean state before running NullRepair.  
 
     ```bash
-    java -jar annotator-core/build/libs/annotator-core-1.3.16-SNAPSHOT.jar jcommander --mode disabled
+    java -jar annotator-core/build/libs/annotator-core-1.3.20-SNAPSHOT.jar jcommander --mode disabled
     ```
 
 10. Finally, run NullRepair on the project:  
 
     ```bash
-    java -jar annotator-core/build/libs/annotator-core-1.3.16-SNAPSHOT.jar jcommander --mode advanced
+    java -jar annotator-core/build/libs/annotator-core-1.3.20-SNAPSHOT.jar jcommander --mode advanced
     ```
 
     If you want changes that NullRepair applies to be pushed to the remote repository directly, add the `--pushCommits` flag.
@@ -425,7 +425,7 @@ To modify the cost limit and cycle limit for the mini-SWE-agent baseline, edit `
 **Analysis depth** — controls how many levels of the call graph are explored when building context. Pass `--depth <n>` on the command line (default: 6):
 
 ```bash
-java -jar annotator-core/build/libs/annotator-core-1.3.16-SNAPSHOT.jar eureka --mode advanced --depth 3
+java -jar annotator-core/build/libs/annotator-core-1.3.20-SNAPSHOT.jar eureka --mode advanced --depth 3
 ```
 
 ## 7. Implementation

@@ -78,6 +78,8 @@ public abstract class AnnotatorBaseCoreTest {
               && !name.equals("benchmarks")
               && !name.equals("evaluation_data")
               && !name.equals(".git")
+              && !name.equals("build")
+              && !name.equals(".gradle")
               && !name.equals("mini-swe-agent-for-nullaway-codefix")
               && !name.equals("evaluation_scripts");
         };

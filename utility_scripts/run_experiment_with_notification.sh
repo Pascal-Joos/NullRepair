@@ -21,7 +21,7 @@ if [ $# -le 2 ]; then
 fi
 
 # Run the experiment command
-experiment_command="java -jar ./annotator-core/build/libs/annotator-core-1.3.16-SNAPSHOT.jar ${@:2} > $2_$3.log 2>&1"
+experiment_command="java -jar ./annotator-core/build/libs/annotator-core-1.3.20-SNAPSHOT.jar ${@:2} > $2_$3.log 2>&1"
 echo "Running experiment: $experiment_command"
 eval "$experiment_command"
 exit_code=$?

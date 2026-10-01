@@ -25,10 +25,11 @@
 package edu.ucr.cs.riple.core.checkers.nullaway;
 
 import com.google.common.base.Preconditions;
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
+import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import edu.ucr.cs.riple.annotator.util.io.TSVFiles;
-import edu.ucr.cs.riple.annotator.util.parsers.JsonParser;
 import edu.ucr.cs.riple.core.Context;
 import edu.ucr.cs.riple.core.Main;
 import edu.ucr.cs.riple.core.checkers.CheckerBaseClass;
@@ -48,6 +49,7 @@ import edu.ucr.cs.riple.core.registries.region.Region;
 import edu.ucr.cs.riple.core.util.GitUtility;
 import edu.ucr.cs.riple.core.util.Utility;
 import edu.ucr.cs.riple.core.util.Utility.CommandResult;
+import edu.ucr.cs.riple.injector.Printer;
 import edu.ucr.cs.riple.injector.changes.AddAnnotation;
 import edu.ucr.cs.riple.injector.changes.AddMarkerAnnotation;
 import edu.ucr.cs.riple.injector.changes.AddSingleElementAnnotation;
@@ -56,11 +58,12 @@ import edu.ucr.cs.riple.injector.changes.RegionRewrite;
 import edu.ucr.cs.riple.injector.location.Location;
 import edu.ucr.cs.riple.injector.location.OnField;
 import edu.ucr.cs.riple.injector.location.OnParameter;
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.StringReader;
 import java.nio.charset.Charset;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
 import java.util.Arrays;
 import java.util.HashSet;
@@ -72,8 +75,18 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+import javax.annotation.Nullable;
+import javax.xml.parsers.DocumentBuilder;
+import javax.xml.parsers.DocumentBuilderFactory;
+import javax.xml.parsers.ParserConfigurationException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.w3c.dom.Document;
+import org.w3c.dom.Element;
+import org.w3c.dom.Node;
+import org.w3c.dom.NodeList;
+import org.xml.sax.InputSource;
+import org.xml.sax.SAXException;
 
 /** Represents <a href="https://github.com/uber/NullAway">NullAway</a> checker in Annotator. */
 public class NullAway extends CheckerBaseClass<NullAwayError> {
@@ -88,8 +101,15 @@ public class NullAway extends CheckerBaseClass<NullAwayError> {
 
   public static final String NULL_UNMARKED = "org.jspecify.annotations.NullUnmarked";
 
-  /** Supported version of NullAway serialization. */
+  /** Latest supported version of NullAway serialization. */
   public static final int VERSION = 4;
+
+  /**
+   * All NullAway serialization versions this Annotator can consume. Version 3 serializes errors as
+   * TSV ({@code errors.tsv}); version 4 (introduced in uber/NullAway#1322) switches to XML ({@code
+   * errors.xml}) to carry structured auto-fix metadata.
+   */
+  private static final ImmutableSet<Integer> SUPPORTED_VERSIONS = ImmutableSet.of(3, 4);
 
   /** The logger instance. */
   private final Logger logger;
@@ -101,48 +121,257 @@ public class NullAway extends CheckerBaseClass<NullAwayError> {
 
   @Override
   public Set<NullAwayError> deserializeErrors(ModuleInfo module) {
-    ImmutableSet<Path> paths =
-        module.getModuleConfiguration().stream()
-            .map(configuration -> configuration.dir.resolve("errors.json"))
-            .collect(ImmutableSet.toImmutableSet());
     Set<NullAwayError> errors = new HashSet<>();
-    paths.forEach(
-        path -> {
-          String content = Utility.readFile(path).trim();
-          if (!content.isEmpty()) {
-            content = content.substring(0, content.length() - 1);
-          }
-          content = "{ \"errors\": [" + content + "]}";
-          JsonParser parser = new JsonParser(content);
-          List<JsonObject> errorsJson = parser.getArrayValueFromKey("errors").orElse(List.of());
-          errorsJson.forEach(err -> errors.add(deserializeErrorFromJson(module, err)));
-        });
+    module
+        .getModuleConfiguration()
+        .forEach(
+            configuration -> {
+              // Version 4+ serializes errors as XML; earlier versions use TSV. Dispatch on which
+              // output file NullAway produced.
+              Path xmlPath = configuration.dir.resolve("errors.xml");
+              if (Files.exists(xmlPath)) {
+                errors.addAll(deserializeErrorsFromXML(module, xmlPath));
+              } else {
+                errors.addAll(
+                    deserializeErrorsFromTSV(module, configuration.dir.resolve("errors.tsv")));
+              }
+            });
     return errors;
   }
 
   /**
-   * Deserializes an error from a JSON object.
+   * Deserializes errors from a NullAway v3 {@code errors.tsv} file.
+   *
+   * @param module Module info.
+   * @param path Path to the {@code errors.tsv} file.
+   * @return Set of deserialized errors.
+   */
+  private Set<NullAwayError> deserializeErrorsFromTSV(ModuleInfo module, Path path) {
+    Set<NullAwayError> errors = new HashSet<>();
+    try (BufferedReader br = Files.newBufferedReader(path, Charset.defaultCharset())) {
+      String line;
+      // Skip header.
+      br.readLine();
+      while ((line = br.readLine()) != null) {
+        errors.add(deserializeErrorFromTSVLine(module, line));
+      }
+    } catch (IOException e) {
+      throw new RuntimeException("Exception happened in reading errors at: " + path, e);
+    }
+    return errors;
+  }
+
+  /**
+   * Deserializes errors from a NullAway v4 {@code errors.xml} file. The file is a stream of
+   * standalone {@code <error>} fragments with no enclosing root element, so it is wrapped in a
+   * synthetic root before parsing.
+   *
+   * @param module Module info.
+   * @param path Path to the {@code errors.xml} file.
+   * @return Set of deserialized errors.
+   */
+  private Set<NullAwayError> deserializeErrorsFromXML(ModuleInfo module, Path path) {
+    Set<NullAwayError> errors = new HashSet<>();
+    String content;
+    try {
+      content = Files.readString(path, Charset.defaultCharset());
+    } catch (IOException e) {
+      throw new RuntimeException("Exception happened in reading errors at: " + path, e);
+    }
+    if (content.isBlank()) {
+      return errors;
+    }
+    try {
+      DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
+      factory.setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false);
+      DocumentBuilder builder = factory.newDocumentBuilder();
+      Document document =
+          builder.parse(new InputSource(new StringReader("<errors>" + content + "</errors>")));
+      NodeList errorNodes = document.getDocumentElement().getElementsByTagName("error");
+      for (int i = 0; i < errorNodes.getLength(); i++) {
+        errors.add(deserializeErrorFromXMLElement(module, (Element) errorNodes.item(i)));
+      }
+    } catch (ParserConfigurationException | SAXException | IOException e) {
+      throw new RuntimeException("Exception happened in parsing errors XML at: " + path, e);
+    }
+    return errors;
+  }
+
+  /**
+   * Deserializes an error from a NullAway v4 {@code <error>} XML element.
    *
    * @param moduleInfo Module info.
-   * @param obj Given JSON object.
-   * @return the deserialized error corresponding to the values in the given JSON object.
+   * @param error The {@code <error>} element.
+   * @return the deserialized error corresponding to the given XML element.
    */
-  private NullAwayError deserializeErrorFromJson(ModuleInfo moduleInfo, JsonObject obj) {
-    Context context = moduleInfo.getContext();
-    int offset = obj.get("offset").getAsInt();
-    Path path = Paths.get(obj.get("path").getAsString());
-    String errorMessage = obj.get("message").getAsString();
-    String errorType = obj.get("message_type").getAsString();
-    JsonObject infos = obj.get("infos").getAsJsonObject();
-    if (obj.has("origins")) {
-      infos.add("origins", obj.get("origins").getAsJsonArray());
-    }
+  private NullAwayError deserializeErrorFromXMLElement(ModuleInfo moduleInfo, Element error) {
+    String errorType = getDirectChildText(error, "message_type");
+    String errorMessage = getDirectChildText(error, "message");
     Region region =
-        new Region(obj.get("enc_class").getAsString(), obj.get("enc_member").getAsString());
+        new Region(getDirectChildText(error, "enc_class"), getDirectChildText(error, "enc_member"));
+    int offset = Integer.parseInt(getDirectChildText(error, "offset"));
+    Path path = Printer.deserializePath(getDirectChildText(error, "path"));
+    Location nonnullTarget = null;
+    Element nonnullTargetElement = getDirectChild(error, "nonnull_target");
+    if (nonnullTargetElement != null) {
+      String[] locationValues =
+          new String[] {
+            getDirectChildText(nonnullTargetElement, "target_kind"),
+            getDirectChildText(nonnullTargetElement, "target_class"),
+            getDirectChildText(nonnullTargetElement, "target_method"),
+            getDirectChildText(nonnullTargetElement, "target_param"),
+            getDirectChildText(nonnullTargetElement, "target_index"),
+            getDirectChildText(nonnullTargetElement, "target_path"),
+          };
+      nonnullTarget = Location.createLocationFromArrayInfo(locationValues);
+    }
+    return createErrorFromParsedValues(
+        moduleInfo,
+        errorType,
+        errorMessage,
+        region,
+        offset,
+        path,
+        nonnullTarget,
+        buildInfos(error));
+  }
+
+  /**
+   * Reconstructs the {@code infos} metadata the LLM codefix consumes from a NullAway v4 {@code
+   * <error>} element. NullAway (since the auto-fix-metadata work in uber/NullAway#1322) emits a
+   * {@code <nullableExpressionInfo>} element and, for local-variable/method origins, an {@code
+   * <origins>} element. These are flattened into a single JSON object matching the shape the former
+   * {@code errors.json} format produced: the nullable-expression fields at the top level and the
+   * origins as an {@code "origins"} array. Returns an empty object when the element carries
+   * neither.
+   */
+  private static JsonObject buildInfos(Element error) {
+    JsonObject infos = new JsonObject();
+    Element info = getDirectChild(error, "nullableExpressionInfo");
+    if (info != null) {
+      copyLeafTextChildren(info, infos);
+    }
+    Element originsElement = getDirectChild(error, "origins");
+    if (originsElement != null) {
+      JsonArray origins = new JsonArray();
+      NodeList originNodes = originsElement.getChildNodes();
+      for (int i = 0; i < originNodes.getLength(); i++) {
+        Node node = originNodes.item(i);
+        if (node.getNodeType() == Node.ELEMENT_NODE && node.getNodeName().equals("origin")) {
+          JsonObject origin = new JsonObject();
+          copyLeafTextChildren((Element) node, origin);
+          origins.add(origin);
+        }
+      }
+      infos.add("origins", origins);
+    }
+    return infos;
+  }
+
+  /**
+   * Copies every direct child element of {@code parent} that holds only text (no nested elements)
+   * into {@code target} as a string property. Container children such as {@code <location>} are
+   * skipped, since the codefix reads only the flat nullable-expression fields.
+   */
+  private static void copyLeafTextChildren(Element parent, JsonObject target) {
+    NodeList children = parent.getChildNodes();
+    for (int i = 0; i < children.getLength(); i++) {
+      Node node = children.item(i);
+      if (node.getNodeType() != Node.ELEMENT_NODE) {
+        continue;
+      }
+      Element child = (Element) node;
+      boolean hasElementChild = false;
+      NodeList grandChildren = child.getChildNodes();
+      for (int j = 0; j < grandChildren.getLength(); j++) {
+        if (grandChildren.item(j).getNodeType() == Node.ELEMENT_NODE) {
+          hasElementChild = true;
+          break;
+        }
+      }
+      if (!hasElementChild) {
+        target.addProperty(child.getNodeName(), child.getTextContent());
+      }
+    }
+  }
+
+  /**
+   * Returns the first direct child element of {@code parent} with the given tag name, or {@code
+   * null} if none exists.
+   */
+  private static @Nullable Element getDirectChild(Element parent, String tag) {
+    NodeList children = parent.getChildNodes();
+    for (int i = 0; i < children.getLength(); i++) {
+      Node node = children.item(i);
+      if (node.getNodeType() == Node.ELEMENT_NODE && node.getNodeName().equals(tag)) {
+        return (Element) node;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Returns the text content of the first direct child element of {@code parent} with the given tag
+   * name, or the literal string {@code "null"} if none exists (matching the placeholder used in the
+   * TSV format).
+   */
+  private static String getDirectChildText(Element parent, String tag) {
+    Element child = getDirectChild(parent, tag);
+    return child == null ? "null" : child.getTextContent();
+  }
+
+  /**
+   * Deserializes an error from a TSV line.
+   *
+   * @param moduleInfo Module info.
+   * @param line the TSV line.
+   * @return the deserialized error corresponding to the values in the given tsv line.
+   */
+  private NullAwayError deserializeErrorFromTSVLine(ModuleInfo moduleInfo, String line) {
+    String[] values = line.split("\t");
+    Preconditions.checkArgument(
+        values.length == 12,
+        String.format(
+            "Expected 12 values to create Error instance in NullAway serialization version 3 but found: %s",
+            values.length));
+    int offset = Integer.parseInt(values[4]);
+    Path path = Printer.deserializePath(values[5]);
+    String errorMessage = values[1];
+    String errorType = values[0];
+    Region region = new Region(values[2], values[3]);
     Location nonnullTarget =
-        obj.has("nonnull_target")
-            ? Location.createLocationFromJson(obj.get("nonnull_target").getAsJsonObject())
-            : null;
+        Location.createLocationFromArrayInfo(Arrays.copyOfRange(values, 6, 12));
+    // The v3 TSV format carries no nullable-expression/origin metadata; the LLM codefix falls back
+    // to parsing the error message for those versions.
+    return createErrorFromParsedValues(
+        moduleInfo, errorType, errorMessage, region, offset, path, nonnullTarget, new JsonObject());
+  }
+
+  /**
+   * Builds a {@link NullAwayError} from the fields common to all serialization versions. Shared by
+   * the TSV (v3) and XML (v4) deserialization paths.
+   *
+   * @param moduleInfo Module info.
+   * @param errorType Error type reported by NullAway.
+   * @param errorMessage Error message reported by NullAway.
+   * @param region Region where the error is reported.
+   * @param offset Offset of the program point where the error is reported.
+   * @param path Path to the containing source file.
+   * @param nonnullTarget Location of the {@code @Nonnull} target of a pseudo-assignment, or {@code
+   *     null} if not applicable.
+   * @param infos Nullable-expression/origin metadata (empty for the v3 TSV format).
+   * @return the deserialized error.
+   */
+  private NullAwayError createErrorFromParsedValues(
+      ModuleInfo moduleInfo,
+      String errorType,
+      String errorMessage,
+      Region region,
+      int offset,
+      Path path,
+      @Nullable Location nonnullTarget,
+      JsonObject infos) {
+    Context context = moduleInfo.getContext();
     DiagnosticPosition position =
         new DiagnosticPosition(path, offset, context.offsetHandler.getOriginalOffset(path, offset));
     if (nonnullTarget == null
@@ -160,7 +389,17 @@ public class NullAway extends CheckerBaseClass<NullAwayError> {
     if (nonnullTarget == null) {
       annotations = Set.of();
     } else if (Utility.isTypeUseAnnotation(config.nullableAnnot)) {
-      annotations = Set.of(new AddTypeUseMarkerAnnotation(nonnullTarget, config.nullableAnnot));
+      if (errorType.equals(NullAwayError.ASSIGN_NULLABLE_TO_NONNULL_ARRAY)) {
+        // The error ASSIGN_NULLABLE_TO_NONNULL_ARRAY from NullAway triggers a fix on an array
+        // variable
+        // with [1, 0] indicating its component type.
+        annotations =
+            Set.of(
+                new AddTypeUseMarkerAnnotation(
+                    nonnullTarget, config.nullableAnnot, ImmutableList.of(ImmutableList.of(1, 0))));
+      } else {
+        annotations = Set.of(new AddTypeUseMarkerAnnotation(nonnullTarget, config.nullableAnnot));
+      }
     } else {
       annotations = Set.of(new AddMarkerAnnotation(nonnullTarget, config.nullableAnnot));
     }
@@ -193,10 +432,11 @@ public class NullAway extends CheckerBaseClass<NullAwayError> {
     Set<String> fields =
         Arrays.stream(fieldsData)
             // NullAway serializes line number right after a field name starting with an open
-            // parentheses. (e.g. foo (line z)). This approach of extracting field names is
-            // extremely dependent on the format of NullAway error messages. Should be watched
-            // carefully and updated if the format is changed by NullAway (maybe regex?).
-            .map(s -> s.substring(0, s.indexOf("(")).trim())
+            // parentheses. (e.g. foo (line z)). Since 0.13.8 the name itself is quoted
+            // (e.g. 'foo' (line z)). This approach of extracting field names is extremely
+            // dependent on the format of NullAway error messages. Should be watched carefully
+            // and updated if the format is changed by NullAway (maybe regex?).
+            .map(s -> unquote(s.substring(0, s.indexOf("(")).trim()))
             .collect(Collectors.toSet());
     if (fields.isEmpty()) {
       throw new RuntimeException(
@@ -206,6 +446,19 @@ public class NullAway extends CheckerBaseClass<NullAwayError> {
               + errorMessage);
     }
     return fields;
+  }
+
+  /**
+   * Removes the enclosing single quotes NullAway puts around syntax element references in its error
+   * messages, leaving an unquoted name untouched.
+   *
+   * @param name Name as it appears in the error message.
+   * @return Name without the enclosing quotes.
+   */
+  private static String unquote(String name) {
+    return name.length() > 1 && name.charAt(0) == '\'' && name.charAt(name.length() - 1) == '\''
+        ? name.substring(1, name.length() - 1)
+        : name;
   }
 
   /**
@@ -634,7 +887,7 @@ public class NullAway extends CheckerBaseClass<NullAwayError> {
 
       try {
         context.targetModuleInfo.getModuleConfiguration().stream()
-            .map(configuration -> configuration.dir.resolve("errors.json"))
+            .map(configuration -> configuration.dir.resolve("errors.xml"))
             .forEach(
                 path -> {
                   try {
@@ -657,12 +910,12 @@ public class NullAway extends CheckerBaseClass<NullAwayError> {
       AtomicBoolean compilationErrorIntroducedHolder =
           new AtomicBoolean(compilationErrorIntroduced);
       context.targetModuleInfo.getModuleConfiguration().stream()
-          .map(configuration -> configuration.dir.resolve("errors.json"))
+          .map(configuration -> configuration.dir.resolve("errors.xml"))
           .forEach(
               path -> {
                 if (!Files.exists(path)) {
                   System.out.println(
-                      "Patch caused compilation error, identified by missing errors.json file.");
+                      "Patch caused compilation error, identified by missing errors.xml file.");
                   compilationErrorIntroducedHolder.set(true);
                 }
               });
@@ -1049,9 +1302,9 @@ public class NullAway extends CheckerBaseClass<NullAwayError> {
       int version =
           Integer.parseInt(Files.readString(pathToSerializationVersion, Charset.defaultCharset()));
       Preconditions.checkArgument(
-          version == VERSION,
-          "This Annotator version only supports NullAway serialization version "
-              + VERSION
+          SUPPORTED_VERSIONS.contains(version),
+          "This Annotator version only supports NullAway serialization versions "
+              + SUPPORTED_VERSIONS
               + ", but found: "
               + version
               + ", Please update Annotator or NullAway accordingly.");
