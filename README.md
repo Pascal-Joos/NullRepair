@@ -10,21 +10,21 @@ Please cite the paper if you use NullRepair in your research:
 
 ```bibtex
 @article{Karimipour2026,
-author = {Karimipour, Nima and Joos, Pascal and Pradel, Michael and Kellogg, Martin and Sridharan, Manu},
-title = {LLM-Based Repair of Static Nullability Errors},
-year = {2026},
-issue_date = {October 2026},
-publisher = {Association for Computing Machinery},
-address = {New York, NY, USA},
-volume = {3},
-number = {ISSTA},
-url = {https://doi.org/10.1145/3832114},
-doi = {10.1145/3832114},
-journal = {Proc. ACM Softw. Eng.},
-month = oct,
-articleno = {ISSTA023},
-numpages = {24},
-keywords = {Static nullness checkers, large language models, static analysis}
+  author = {Karimipour, Nima and Joos, Pascal and Pradel, Michael and Kellogg, Martin and Sridharan, Manu},
+  title = {LLM-Based Repair of Static Nullability Errors},
+  year = {2026},
+  issue_date = {October 2026},
+  publisher = {Association for Computing Machinery},
+  address = {New York, NY, USA},
+  volume = {3},
+  number = {ISSTA},
+  url = {https://doi.org/10.1145/3832114},
+  doi = {10.1145/3832114},
+  journal = {Proc. ACM Softw. Eng.},
+  month = oct,
+  articleno = {ISSTA023},
+  numpages = {24},
+  keywords = {Static nullness checkers, large language models, static analysis}
 }
 ```
 
