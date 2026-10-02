@@ -96,8 +96,8 @@ public class NullAwayError extends Error implements Comparable<NullAwayError> {
     public final String symbol;
 
     public NullableExpressionInfo(JsonObject obj) {
-      // NullAway's v4 errors.xml does not carry this custom metadata (only the former JSON format
-      // did), so every field tolerates an absent key and degrades to a neutral default.
+      // NullAway's v4 errors.xml populates these via NullAway.buildInfos; the v3 TSV format does
+      // not, so every field tolerates an absent key and degrades to a neutral default.
       this.expression = stringOrDefault(obj, "expression", "");
       this.isAnnotated = obj.has("isAnnotated") && obj.get("isAnnotated").getAsBoolean();
       this.kind = stringOrDefault(obj, "kind", "");
@@ -203,8 +203,9 @@ public class NullAwayError extends Error implements Comparable<NullAwayError> {
     switch (messageType) {
       case "DEREFERENCE_NULLABLE":
         {
-          // Prefer the custom infos metadata when present (former JSON format); otherwise fall
-          // back to parsing NullAway's message, since v4 errors.xml does not carry infos.
+          // v4 errors.xml carries the nullable expression in <nullableExpressionInfo> (read into
+          // infos by NullAway.buildInfos); prefer it. Fall back to parsing NullAway's message only
+          // when infos is absent (the v3 TSV format, or an error that omitted the element).
           String fromInfo = getNullableExpressionInfo().expression;
           if (!fromInfo.isEmpty()) {
             return fromInfo;
