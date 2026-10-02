@@ -4,19 +4,27 @@ NullRepair is an LLM-based tool that automatically repairs nullability errors re
 
 NullRepair now has support for NullAway 0.14.2.
 
-The preprint [LLM-Based Repair of Static Nullability Errors](https://arxiv.org/abs/2507.20674) describes the tool and the conducted experiments in detail.
+The paper [LLM-Based Repair of Static Nullability Errors](https://dl.acm.org/doi/10.1145/3832114) describes the tool and the conducted experiments in detail.
 
 Please cite the paper if you use NullRepair in your research:
 
 ```bibtex
-@misc{karimipour2026llmbasedrepairstaticnullability,
-      title={LLM-Based Repair of Static Nullability Errors}, 
-      author={Nima Karimipour and Pascal Joos and Michael Pradel and Martin Kellogg and Manu Sridharan},
-      year={2026},
-      eprint={2507.20674},
-      archivePrefix={arXiv},
-      primaryClass={cs.SE},
-      url={https://arxiv.org/abs/2507.20674}, 
+@article{Karimipour2026,
+author = {Karimipour, Nima and Joos, Pascal and Pradel, Michael and Kellogg, Martin and Sridharan, Manu},
+title = {LLM-Based Repair of Static Nullability Errors},
+year = {2026},
+issue_date = {October 2026},
+publisher = {Association for Computing Machinery},
+address = {New York, NY, USA},
+volume = {3},
+number = {ISSTA},
+url = {https://doi.org/10.1145/3832114},
+doi = {10.1145/3832114},
+journal = {Proc. ACM Softw. Eng.},
+month = oct,
+articleno = {ISSTA023},
+numpages = {24},
+keywords = {Static nullness checkers, large language models, static analysis}
 }
 ```
 
