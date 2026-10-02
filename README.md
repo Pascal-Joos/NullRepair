@@ -2,6 +2,8 @@
 
 NullRepair is an LLM-based tool that automatically repairs nullability errors reported by [NullAway](https://github.com/uber/NullAway) based on safe usage regions. It is built on top of [NullAwayAnnotator](https://github.com/nimakarimipour/NullAwayAnnotator).
 
+NullRepair now has support for NullAway 0.14.2.
+
 The preprint [LLM-Based Repair of Static Nullability Errors](https://arxiv.org/abs/2507.20674) describes the tool and the conducted experiments in detail.
 
 Please cite the paper if you use NullRepair in your research:
