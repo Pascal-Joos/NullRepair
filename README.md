@@ -368,8 +368,8 @@ We have created a fork for the example project here: https://github.com/Pascal-J
 
 4. Update the `build.gradle` or `build.gradle.kts` file to include the NullAway dependency and annotation processing. Commit these changes.  
 See the following commit for an example on how to do this:  
-https://github.com/Pascal-Joos/jcommander/commit/f608a5ae8a069d05f588a4d5b1b0c130b7594bbd  
-This includes adding a file prepare.sh.
+https://github.com/Pascal-Joos/jcommander/commit/78717914991cdc053e957c58e87800507e1600ed  
+This includes adding a `prepare.sh` file and, since the project is checked out under `benchmarks/`, a `settings.gradle.kts` so it builds standalone. It uses the current dependency set: stock NullAway 0.14.2 (errors.xml serialization v4), `annotator-scanner`/`annotation-util` 1.3.20-SNAPSHOT, Error Prone 2.42.0, and the `-XDshould-stop.ifError=FLOW` javac flag required by Error Prone >= 2.36.
 
 5. Run the `prepare.sh` script to prepare the project for NullRepair.
 
